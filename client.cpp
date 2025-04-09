@@ -4,7 +4,7 @@ void buffer_events_ctor(BufferEvents* buff_events, int* code_error) {
 
     MY_ASSERT(buff_events != NULL, PTR_ERROR);
 
-    buff_events->buffer      = (Event**)calloc(BUFFER_SIZE, sizeof(Event*));
+    buff_events->buffer      = (Event*)calloc(BUFFER_SIZE, sizeof(Event));
     buff_events->ip          = 0;
     buff_events->full_buffer = false;
 }
@@ -12,10 +12,6 @@ void buffer_events_ctor(BufferEvents* buff_events, int* code_error) {
 void buffer_events_dtor(BufferEvents* buff_events, int* code_error) {
 
     MY_ASSERT(buff_events != NULL, PTR_ERROR);
-
-    for(size_t i = 0; i < BUFFER_SIZE; i++) {
-        free(buff_events->buffer[i]);
-    }
 
     free(buff_events->buffer);
     buff_events->buffer = NULL;
@@ -43,9 +39,14 @@ void generate_uuid(char *uuid_str, int* code_error) {
 
 Event generate_event(int* code_error) {
     Event event;
+
     generate_uuid(event.id, code_error);
     get_current_time(event.date, code_error);
+    event.id[UUID_LEN-1] = '\0';
+    event.date[DATE_LEN-1] = '\0';
+
     event.status = get_random_num(0, 1); 
+
     return event;
 }
 
@@ -53,11 +54,10 @@ int get_random_num(int leftBorder, int rightBorder) {
     return rand() % (rightBorder - leftBorder + 1) + leftBorder;
 }
 
-void add_event(BufferEvents* buff_events, Event* events, int* code_error) {
+void add_event(BufferEvents* buff_events, Event event, int* code_error) {
 
     MY_ASSERT(buff_events            != NULL, PTR_ERROR);
-    MY_ASSERT(events                 != NULL, PTR_ERROR);
-    MY_ASSERT(buff_events->ip < BUFFER_SIZE, SIZE_ERROR);
+    MY_ASSERT(buff_events->ip <= BUFFER_SIZE, SIZE_ERROR);
 
     if(buff_events->ip == BUFFER_SIZE) {
         if(!buff_events->full_buffer) {
@@ -66,18 +66,13 @@ void add_event(BufferEvents* buff_events, Event* events, int* code_error) {
         buff_events->ip = 0;
     }
 
-    if(buff_events->full_buffer) {
-        free(buff_events->buffer[buff_events->ip]);
-    }
-
-    buff_events->buffer[buff_events->ip] = events;
+    buff_events->buffer[buff_events->ip] = event;
     buff_events->ip++;
 }
 
-void add_in_buffer(BufferEvents* buff_events, Event* events, int* code_error) {
+void add_in_buffer(BufferEvents* buff_events, Event event, int* code_error) {
 
     MY_ASSERT(buff_events != NULL, PTR_ERROR);
-    MY_ASSERT(events      != NULL, PTR_ERROR);
 
     /* если буффер заполнен (сгенерировано уже более 99 событий), то с вероятностью,
        равной HIT_PROBABILITY % событие в него попадёт (чтобы 100-ое событие было максимально случайным, при этом экономилась память)
@@ -86,14 +81,11 @@ void add_in_buffer(BufferEvents* buff_events, Event* events, int* code_error) {
     if(buff_events->full_buffer) {  
         int hit_prob = get_random_num(1, 100);
         if(hit_prob <= HIT_PROBABILITY) {
-            add_event(buff_events, events, code_error);
-        }
-        else {
-            free(events);
+            add_event(buff_events, event, code_error);
         }
     }
     else {
-        add_event(buff_events, events, code_error);
+        add_event(buff_events, event, code_error);
     }
 }
 
@@ -140,10 +132,10 @@ size_t get_events_len(const Event* events, int num_of_events, int* code_error) {
 
     MY_ASSERT(events != NULL, PTR_ERROR);
 
-    size_t total_size = 11; 
+    size_t total_size = 14; 
     
     for(int i = 0; i < num_of_events; i++) {
-        size_t event_size = 20 + strlen(events[i].id) + strlen(events[i].date) + 1;
+        size_t event_size = 29 + strlen(events[i].id) + strlen(events[i].date) + 1;
         total_size += event_size;
 
         if(i > 0) {
@@ -158,17 +150,33 @@ char* events_to_json(const Event* events, int num_of_events, int* code_error) {
 
     MY_ASSERT(events != NULL, PTR_ERROR);
 
-    char* json = (char*)calloc(get_events_len(events, num_of_events, code_error), sizeof(char));
+    size_t buf_size = get_events_len(events, num_of_events, code_error);
+
+    char* json = (char*)calloc(buf_size, sizeof(char));
     MY_ASSERT(json != NULL, PTR_ERROR);
 
     char* ptr = json;
+    size_t remaining = buf_size;
 
-    ptr += sprintf(ptr, "{\"events\":[");
+    ptr += snprintf(ptr, remaining, "{\"events\":[");
+    remaining -= (ptr - json);
+
     for(int i = 0; i < num_of_events; i++) {
-        ptr += sprintf(ptr, "%s{\"id\":\"%s\",\"date\":\"%s\",\"status\":%d}",
-                  (i > 0) ? "," : "", events[i].id, events[i].date, events[i].status);
+        int written = snprintf(
+            ptr, remaining, 
+            "%s{\"id\":\"%s\",\"date\":\"%s\",\"status\":%d}", 
+            (i > 0) ? "," : "", 
+            events[i].id, 
+            events[i].date, 
+            events[i].status
+        );
+        if (written >= remaining) break;
+        ptr += written;
+        remaining -= written;
     }
-    sprintf(ptr, "]}"); 
+    snprintf(ptr, remaining, "]}");
+
+    printf("%s\n", json);
 
     return json;
 }

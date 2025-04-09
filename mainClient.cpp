@@ -23,31 +23,27 @@ int main(void) {
         ivents_counter++;
 
         int t_interval_ms = get_random_num(1, 1000);
-        int num_of_events = get_random_num(1, 1000);
+        int num_of_events = get_random_num(1, 5);
 
         Event* events = NULL;
 
-        if(ivents_counter % 100 == 0) {
+        events = (Event*)calloc(num_of_events, sizeof(Event));
 
-            int right_border    = buff_events.full_buffer ? BUFFER_SIZE - 1 : buff_events.ip - 1;
-            int random_ip_event = get_random_num(0, right_border);
+        for(int i = 0; i < num_of_events; i++) {
+            if(i % 100 == 0 && i != 0) {
+                int right_border    = buff_events.full_buffer ? BUFFER_SIZE - 1 : buff_events.ip - 1;
+                int random_ip_event = get_random_num(0, right_border);
 
-            events = buff_events.buffer[random_ip_event];
-
-            printf("Event 100! Random event is %d\n", random_ip_event);
-            printf("%s\n", events[0].id);
-            printf("%s\n", events[0].date);
-        }
-        else {
-            events = (Event*)calloc(num_of_events, sizeof(Event));
-
-            for(int i = 0; i < num_of_events; i++) {
-                events[i] = generate_event(&code_error);
+                events[i] = buff_events.buffer[random_ip_event];
+                printf("Event 100! Random event is %d\n", random_ip_event);
             }
-            add_in_buffer(&buff_events, events, &code_error);
-
-            printf("Generated %d events. Next batch in %d ms\n", num_of_events, t_interval_ms);
+            else {
+                events[i] = generate_event(&code_error);
+                add_in_buffer(&buff_events, events[i], &code_error);
+            }
         }
+
+        printf("Generated %d events. Next batch in %d ms\n", num_of_events, t_interval_ms);
 
         char* json = events_to_json(events, num_of_events, &code_error);
         if(json) {
@@ -55,6 +51,8 @@ int main(void) {
             printf("Data was sent.\n");
             free(json);
         }
+
+        free(events);
 
         struct timespec ts = {
             .tv_sec = t_interval_ms / 1000,
