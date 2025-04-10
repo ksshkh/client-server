@@ -23,7 +23,7 @@ int main(void) {
         ivents_counter++;
 
         int t_interval_ms = get_random_num(1, 1000);
-        int num_of_events = get_random_num(1, 5);
+        int num_of_events = get_random_num(1, 1000);
 
         Event* events = NULL;
 

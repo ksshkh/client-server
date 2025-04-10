@@ -15,7 +15,7 @@
 
 #include "errors.hpp"
 
-const int PORT = 8072;
+const int PORT = 8076;
 const int MAX_QUEUE_SIZE = 100;
 const int UUID_LEN       = 37;
 const int DATE_LEN       = 30;
@@ -37,11 +37,7 @@ struct EventQueue {
     Event** events;  
     int head;                        
     int tail;                        
-    int size;
-
-    pthread_mutex_t lock;            
-    pthread_cond_t  not_empty;         
-    pthread_cond_t  not_full;          
+    int size;      
 };
 
 struct ProcessedEvents{
@@ -72,5 +68,9 @@ void parse_events_array(const char* json_str, EventArray* event_array, int* code
 Event* parse_event(json_t* event_obj, int* code_error);
 void print_metrics(Metrics* metrics);
 void* handle_client(void* arg);
+void queue_ctor(EventQueue* queue, int* code_error);
+void queue_dtor(EventQueue* queue, int* code_error);
+int queue_push(EventQueue* queue, Event* event, int* code_error);
+Event* queue_pop(EventQueue* queue, int* code_error);
 
 #endif // SERVER_HPP

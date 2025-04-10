@@ -176,7 +176,7 @@ char* events_to_json(const Event* events, int num_of_events, int* code_error) {
     }
     snprintf(ptr, remaining, "]}");
 
-    printf("%s\n", json);
+    // printf("%s\n", json);
 
     return json;
 }

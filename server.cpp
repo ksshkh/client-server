@@ -70,7 +70,6 @@ void parse_events_array(const char* json_str, EventArray* event_array, int* code
     }
 
     event_array->num_of_events = json_array_size(j_events);
-    fprintf(stderr, "(((((((%d)))))))\n", event_array->num_of_events);
     event_array->events = (Event**)calloc(event_array->num_of_events, sizeof(Event*));
     MY_ASSERT(event_array->events != NULL, PTR_ERROR);
 
@@ -95,7 +94,10 @@ void print_metrics(Metrics* metrics) {
 void* handle_client(void* arg) {
     int client_socket = *(int*)arg;
     free(arg);
+    int code_error = 0; // надо передавать его в функцию
 
+    EventQueue queue = {};
+    queue_ctor(&queue, &code_error);
     Metrics metrics = {0, 0, 0.0};
     
     while(1) {
@@ -126,37 +128,32 @@ void* handle_client(void* arg) {
         
         // 3. Обрабатываем JSON
         EventArray event_array = {0};
-        int code_error = 0;
         parse_events_array(buffer, &event_array, &code_error);
-        
-        if(code_error != 0) {
-            fprintf(stderr, "Failed to parse events\n");
-        } else {
-            printf("Successfully parsed %zu events\n", event_array.num_of_events);
-            for(size_t i = 0; i < event_array.num_of_events; i++) {
 
-                int t_interval_ms = get_random_num(10, 500);
-                struct timespec ts = {
-                    .tv_sec = t_interval_ms / 1000,
-                    .tv_nsec = (t_interval_ms % 1000) * 1000000
-                };
-                nanosleep(&ts, NULL);
-
-                printf("Event %zu: ID=%s, Date=%s, Status=%d\n", 
-                      i, event_array.events[i]->id, 
-                      event_array.events[i]->date, 
-                      event_array.events[i]->status);
-
-                metrics.total_processed++;
-                metrics.total_time_ms += t_interval_ms;
-                print_metrics(&metrics);
+        for(size_t i = 0; i < event_array.num_of_events; i++) {
+            if(!queue_push(&queue, event_array.events[i], &code_error)) {
+                free(event_array.events[i]); // отбрасываем если очередь полна
+                printf("KICKED!!!!!!!!");
             }
         }
-        
-        // 4. Освобождаем ресурсы
-        for(size_t i = 0; i < event_array.num_of_events; i++) {
-            free(event_array.events[i]);
+
+        while (queue.size > 0) {
+            Event* event = queue_pop(&queue, &code_error);
+            
+            int t_interval_ms = get_random_num(10, 500);
+            struct timespec ts = {
+                .tv_sec = t_interval_ms / 1000,
+                .tv_nsec = (t_interval_ms % 1000) * 1000000
+            };
+            nanosleep(&ts, NULL);
+            
+            metrics.total_processed++;
+            metrics.total_time_ms += t_interval_ms;
+            print_metrics(&metrics);
+            
+            free(event);
         }
+        
         free(event_array.events);
         free(buffer);
         
@@ -165,3 +162,63 @@ void* handle_client(void* arg) {
     close(client_socket);
     return NULL;
 }
+
+void queue_ctor(EventQueue* queue, int* code_error) {
+
+    MY_ASSERT(queue != NULL, PTR_ERROR);
+
+    queue->events = (Event**)calloc(MAX_QUEUE_SIZE, sizeof(Event*));
+    MY_ASSERT(queue->events != NULL, PTR_ERROR);
+
+    queue->head = 0;
+    queue->tail = 0;
+    queue->size = 0;
+}
+
+void queue_dtor(EventQueue* queue, int* code_error) {
+
+    MY_ASSERT(queue != NULL, PTR_ERROR);
+
+    for(int i = 0; i < queue->size; i++) {
+        free(queue->events[(queue->head + i) % MAX_QUEUE_SIZE]);
+    }
+
+    free(queue->events);
+    queue->events = NULL;
+
+    queue->head = 0;
+    queue->tail = 0;
+    queue->size = 0;
+}
+
+int queue_push(EventQueue* queue, Event* event, int* code_error) {
+                 
+    MY_ASSERT(queue != NULL,                  PTR_ERROR);
+    MY_ASSERT(event != NULL,                  PTR_ERROR);
+
+    if(queue->size == MAX_QUEUE_SIZE) {
+        return 0;
+    }
+
+    queue->events[queue->tail] = event;
+    queue->tail = (queue->tail + 1) % MAX_QUEUE_SIZE;
+    queue->size++;
+
+    return 1;
+}
+
+Event* queue_pop(EventQueue* queue, int* code_error) {
+
+    MY_ASSERT(queue != NULL, PTR_ERROR);
+
+    while(queue->size <= 0) {
+        return NULL;
+    }
+
+    Event* event = queue->events[queue->head];
+    queue->head = (queue->head + 1) % MAX_QUEUE_SIZE;
+    queue->size--;
+
+    return event;
+}
+
