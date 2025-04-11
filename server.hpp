@@ -33,7 +33,7 @@ struct Metrics {
     double total_time_ms;       
 };
 
-struct EventQueue { // кольцевой буффер для очереди событий
+struct EventQueue { // кольцевой буфер для очереди событий (рассчтиан на MAX_QUEUE_SIZE событий)
     Event** events;  
     int head;                        
     int tail;                        
