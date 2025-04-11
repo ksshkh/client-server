@@ -13,7 +13,7 @@
 
 #include "errors.hpp"
 
-const int PORT            = 8062;   
+const int PORT            = 8068;   
 const int UUID_LEN        = 37;
 const int DATE_LEN        = 30;
 const int BUFFER_SIZE     = 99;
@@ -41,7 +41,7 @@ void add_event         (BufferEvents* buff_events, Event event, int* code_error)
 void add_in_buffer     (BufferEvents* buff_events, Event event, int* code_error);
 int connect_to_server  (const char *server_ip, int port, int* code_error);
 void send_json_data    (int sock, const char *json_data, int* code_error);
-char* events_to_json   (const Event* events, int count, int* code_error);
 size_t get_events_len  (const Event* events, int num_of_events, int* code_error);
+char* events_to_json   (const Event* events, int count, int* code_error);
 
 #endif // CLIENT_HPP

@@ -15,8 +15,8 @@
 
 #include "errors.hpp"
 
-const int PORT = 8062;
-const int MAX_QUEUE_SIZE = 100;
+const int PORT           = 8068;
+const int MAX_QUEUE_SIZE = 1000;
 const int UUID_LEN       = 37;
 const int DATE_LEN       = 30;
 const int NUM_OF_THREADS = 4;
@@ -33,7 +33,7 @@ struct Metrics {
     double total_time_ms;       
 };
 
-struct EventQueue {
+struct EventQueue { // кольцевой буффер для очереди событий
     Event** events;  
     int head;                        
     int tail;                        
@@ -43,7 +43,7 @@ struct EventQueue {
     pthread_cond_t  cond; 
 };
 
-struct ProcessedEvents{
+struct ProcessedEvents{ // хэш-таблица для отслеживания дубликатов
     char id[UUID_LEN];
     UT_hash_handle hh;
 };
@@ -63,19 +63,20 @@ struct ServerContext {
     Metrics metrics;
     ProcessedEvents* processed;      
     bool running;                    
-    pthread_mutex_t metrics_mutex;   
+    pthread_mutex_t metrics_mutex;
+    int* code_error;   
 };
 
-int get_random_num(int leftBorder, int rightBorder);
+int get_random_num     (int leftBorder, int rightBorder);
 int setup_server_socket(int port, int* code_error);
 void parse_events_array(const char* json_str, EventArray* event_array, int* code_error);
-Event* parse_event(json_t* event_obj, int* code_error);
-void print_metrics(Metrics* metrics);
-void* run_server(void* arg);
-void queue_ctor(EventQueue* queue, int* code_error);
-void queue_dtor(EventQueue* queue, int* code_error);
-int queue_push(EventQueue* queue, Event* event, int* code_error);
-Event* queue_pop(EventQueue* queue, int* code_error);
-void* event_processor(void* arg);
+Event* parse_event     (json_t* event_obj, int* code_error);
+void print_metrics     (Metrics* metrics, int* code_error);
+void* run_server       (void* arg);
+void* event_processor  (void* arg);
+void queue_ctor        (EventQueue* queue, int* code_error);
+void queue_dtor        (EventQueue* queue, int* code_error);
+int queue_push         (EventQueue* queue, Event* event, int* code_error);
+Event* queue_pop       (EventQueue* queue, int* code_error);
 
 #endif // SERVER_HPP

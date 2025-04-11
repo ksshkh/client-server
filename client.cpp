@@ -38,6 +38,7 @@ void generate_uuid(char *uuid_str, int* code_error) {
 }
 
 Event generate_event(int* code_error) {
+    
     Event event;
 
     generate_uuid(event.id, code_error);
@@ -91,8 +92,8 @@ void add_in_buffer(BufferEvents* buff_events, Event event, int* code_error) {
 
 int connect_to_server(const char *server_ip, int port, int* code_error) {
 
-    MY_ASSERT(server_ip != NULL, IP_ERROR); // сделать ассерт на порт
-    // MY_ASSERT(port > 0 && port <= 65535, PORT_ERROR);????
+    MY_ASSERT(server_ip != NULL,           IP_ERROR);
+    MY_ASSERT(port > 0 && port <= 65535, PORT_ERROR);
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     MY_ASSERT(sock != -1, SOCKET_ERROR);
@@ -104,13 +105,13 @@ int connect_to_server(const char *server_ip, int port, int* code_error) {
 
     if(inet_pton(AF_INET, server_ip, &server_addr.sin_addr) <= 0) {
         MY_ASSERT(true, IP_ERROR);
-        close(sock);
+        MY_ASSERT(close(sock) == 0, CLOSE_ERROR);
         return -1;
     }
 
     if(connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
         MY_ASSERT(true, CONNECT_ERROR);
-        close(sock);
+        MY_ASSERT(close(sock) == 0, CLOSE_ERROR);
         return -1;
     }
 
@@ -175,8 +176,6 @@ char* events_to_json(const Event* events, int num_of_events, int* code_error) {
         remaining -= written;
     }
     snprintf(ptr, remaining, "]}");
-
-    // printf("%s\n", json);
 
     return json;
 }
