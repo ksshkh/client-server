@@ -91,75 +91,62 @@ void print_metrics(Metrics* metrics) {
            metrics->total_time_ms / metrics->total_processed);
 }
 
-void* handle_client(void* arg) {
-    int client_socket = *(int*)arg;
+void* run_server(void* arg) {
+    ThreadArgs* args = (ThreadArgs*)arg;
+    int client_socket = args->client_socket;
+    int* code_error = args->code_error; 
     free(arg);
-    int code_error = 0; // надо передавать его в функцию
 
-    EventQueue queue = {};
-    queue_ctor(&queue, &code_error);
-    Metrics metrics = {0, 0, 0.0};
+    ServerContext context = {};
+    context.running = true;
+    queue_ctor(&context.queue, code_error);
+    pthread_mutex_init(&context.metrics_mutex, NULL);
     
-    while(1) {
-        // 1. Читаем длину сообщения
+    // Создаем поток для обработки событий
+    pthread_t processor_thread;
+    pthread_create(&processor_thread, NULL, event_processor, &context);
+    
+    while(true) {
+
         uint32_t data_len;
         int len_read = read(client_socket, &data_len, sizeof(data_len));
         
         if(len_read <= 0) break;  // Соединение разорвано
         
-        data_len = ntohl(data_len);  // Конвертируем из сетевого порядка байт
+        data_len = ntohl(data_len);  
+        char* buffer = (char*)calloc(data_len + 1, sizeof(char));
+        int bytes_read = read(client_socket, buffer, data_len); // assert когда сделаю code_error
         
-        // 2. Читаем само сообщение
-        char* buffer = (char*)malloc(data_len + 1);
-        int total_read = 0;
-        
-        while(total_read < data_len) {
-            int bytes_read = read(client_socket, buffer + total_read, data_len - total_read);
-            if(bytes_read <= 0) break;
-            total_read += bytes_read;
-        }
-        
-        if(total_read < data_len) {
-            free(buffer);
-            break;  // Не удалось прочитать полное сообщение
-        }
-        
-        buffer[data_len] = '\0';  // Добавляем нуль-терминатор
-        
-        // 3. Обрабатываем JSON
+        buffer[data_len] = '\0'; 
+
         EventArray event_array = {0};
-        parse_events_array(buffer, &event_array, &code_error);
+        parse_events_array(buffer, &event_array, code_error);
 
         for(size_t i = 0; i < event_array.num_of_events; i++) {
-            if(!queue_push(&queue, event_array.events[i], &code_error)) {
+            if(!queue_push(&context.queue, event_array.events[i], code_error)) {
                 free(event_array.events[i]); // отбрасываем если очередь полна
-                printf("KICKED!!!!!!!!");
             }
         }
 
-        while (queue.size > 0) {
-            Event* event = queue_pop(&queue, &code_error);
-            
-            int t_interval_ms = get_random_num(10, 500);
-            struct timespec ts = {
-                .tv_sec = t_interval_ms / 1000,
-                .tv_nsec = (t_interval_ms % 1000) * 1000000
-            };
-            nanosleep(&ts, NULL);
-            
-            metrics.total_processed++;
-            metrics.total_time_ms += t_interval_ms;
-            print_metrics(&metrics);
-            
-            free(event);
-        }
-        
         free(event_array.events);
         free(buffer);
-        
+    }
+
+    context.running = false;
+    pthread_cond_signal(&context.queue.cond); // Разблокируем обработчик
+    pthread_join(processor_thread, NULL);
+    
+    // Очистка хеш-таблицы
+    ProcessedEvents *current, *tmp;
+    HASH_ITER(hh, context.processed, current, tmp) {
+        HASH_DEL(context.processed, current);
+        free(current);
     }
     
+    queue_dtor(&context.queue, code_error);
+    pthread_mutex_destroy(&context.metrics_mutex);
     close(client_socket);
+    
     return NULL;
 }
 
@@ -173,6 +160,9 @@ void queue_ctor(EventQueue* queue, int* code_error) {
     queue->head = 0;
     queue->tail = 0;
     queue->size = 0;
+
+    pthread_mutex_init(&queue->mutex, NULL);
+    pthread_cond_init(&queue->cond, NULL);
 }
 
 void queue_dtor(EventQueue* queue, int* code_error) {
@@ -189,6 +179,9 @@ void queue_dtor(EventQueue* queue, int* code_error) {
     queue->head = 0;
     queue->tail = 0;
     queue->size = 0;
+
+    pthread_mutex_destroy(&queue->mutex);
+    pthread_cond_destroy(&queue->cond);
 }
 
 int queue_push(EventQueue* queue, Event* event, int* code_error) {
@@ -196,13 +189,19 @@ int queue_push(EventQueue* queue, Event* event, int* code_error) {
     MY_ASSERT(queue != NULL,                  PTR_ERROR);
     MY_ASSERT(event != NULL,                  PTR_ERROR);
 
+    pthread_mutex_lock(&queue->mutex);
+
     if(queue->size == MAX_QUEUE_SIZE) {
+        pthread_mutex_unlock(&queue->mutex);
         return 0;
     }
 
     queue->events[queue->tail] = event;
     queue->tail = (queue->tail + 1) % MAX_QUEUE_SIZE;
     queue->size++;
+
+    pthread_cond_signal(&queue->cond); 
+    pthread_mutex_unlock(&queue->mutex);
 
     return 1;
 }
@@ -211,14 +210,58 @@ Event* queue_pop(EventQueue* queue, int* code_error) {
 
     MY_ASSERT(queue != NULL, PTR_ERROR);
 
+    pthread_mutex_lock(&queue->mutex);
+
     while(queue->size <= 0) {
-        return NULL;
+        pthread_cond_wait(&queue->cond, &queue->mutex);
     }
 
     Event* event = queue->events[queue->head];
     queue->head = (queue->head + 1) % MAX_QUEUE_SIZE;
     queue->size--;
 
+    pthread_mutex_unlock(&queue->mutex);
+
     return event;
+}
+
+void* event_processor(void* arg) {
+    ServerContext* context = (ServerContext*)arg;
+    ProcessedEvents* processed = NULL;
+    
+    while(context->running) {
+        Event* event = queue_pop(&context->queue, NULL);
+        
+        // Проверка на дубликат
+        ProcessedEvents* found = NULL;
+        HASH_FIND_STR(context->processed, event->id, found);
+        
+        int t_interval_ms = get_random_num(10, 500);
+        struct timespec ts = {
+            .tv_sec = t_interval_ms / 1000,
+            .tv_nsec = (t_interval_ms % 1000) * 1000000
+        };
+        nanosleep(&ts, NULL);
+        
+        pthread_mutex_lock(&context->metrics_mutex);
+        context->metrics.total_processed++;
+        context->metrics.total_time_ms += t_interval_ms;
+        
+        if(found) {
+            context->metrics.total_duplicates++;
+        } else {
+            // Добавляем в хеш-таблицу обработанных событий
+            ProcessedEvents* item = (ProcessedEvents*)malloc(sizeof(ProcessedEvents));
+            strcpy(item->id, event->id);
+            HASH_ADD_STR(context->processed, id, item);
+        }
+        
+        print_metrics(&context->metrics);
+        pthread_mutex_unlock(&context->metrics_mutex);
+        
+        free(event);
+    }
+    
+    return NULL;
 }
 

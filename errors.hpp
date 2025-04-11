@@ -15,8 +15,9 @@ enum Errors {
     CONNECT_ERROR = 1 << 5,
     SEND_ERROR    = 1 << 6,
     PARSE_ERROR   = 1 << 7,
+    READ_ERROR    = 1 << 8,
     
-    N_ERROR    = 8
+    N_ERROR    = 9
 };
 
 #define MY_ASSERT(expression, err) if(!(expression)) {                                                                      \

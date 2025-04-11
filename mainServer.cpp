@@ -13,12 +13,16 @@ int main(void) {
     printf("Server started on port %d\n", PORT);
     printf("Waiting for connections...\n");
 
-    while (1) {
+    while(true) {
         sockaddr_in client_address;
         socklen_t client_addrlen = sizeof(client_address);
         
         int* client_socket = (int*)malloc(sizeof(int));
         *client_socket = accept(server_fd, (struct sockaddr*)&client_address, &client_addrlen);
+
+        ThreadArgs* args    = (ThreadArgs*)calloc(1, sizeof(ThreadArgs));
+        args->client_socket = *client_socket;
+        args->code_error    = &code_error;
         
         if (*client_socket < 0) {
             perror("accept failed");
@@ -32,7 +36,7 @@ int main(void) {
 
         // Создаем поток для обработки клиента
         pthread_t thread_id;
-        if (pthread_create(&thread_id, NULL, handle_client, client_socket) != 0) {
+        if(pthread_create(&thread_id, NULL, run_server, args) != 0) {
             perror("pthread_create failed");
             close(*client_socket);
             free(client_socket);

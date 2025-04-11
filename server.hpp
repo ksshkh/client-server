@@ -15,7 +15,7 @@
 
 #include "errors.hpp"
 
-const int PORT = 8076;
+const int PORT = 8062;
 const int MAX_QUEUE_SIZE = 100;
 const int UUID_LEN       = 37;
 const int DATE_LEN       = 30;
@@ -37,7 +37,10 @@ struct EventQueue {
     Event** events;  
     int head;                        
     int tail;                        
-    int size;      
+    int size;
+    
+    pthread_mutex_t mutex;           
+    pthread_cond_t  cond; 
 };
 
 struct ProcessedEvents{
@@ -45,15 +48,8 @@ struct ProcessedEvents{
     UT_hash_handle hh;
 };
 
-struct EventTracker{
-    ProcessedEvents* hash_table;  
-    pthread_mutex_t mutex;       
-};
-
 struct ThreadArgs {
-    EventQueue* queue;
-    EventTracker* event_tracker;
-    Metrics* metrics;
+    int client_socket;
     int* code_error;
 };
 
@@ -62,15 +58,24 @@ struct EventArray {
     size_t num_of_events;  
 };
 
+struct ServerContext {
+    EventQueue queue;
+    Metrics metrics;
+    ProcessedEvents* processed;      
+    bool running;                    
+    pthread_mutex_t metrics_mutex;   
+};
+
 int get_random_num(int leftBorder, int rightBorder);
 int setup_server_socket(int port, int* code_error);
 void parse_events_array(const char* json_str, EventArray* event_array, int* code_error);
 Event* parse_event(json_t* event_obj, int* code_error);
 void print_metrics(Metrics* metrics);
-void* handle_client(void* arg);
+void* run_server(void* arg);
 void queue_ctor(EventQueue* queue, int* code_error);
 void queue_dtor(EventQueue* queue, int* code_error);
 int queue_push(EventQueue* queue, Event* event, int* code_error);
 Event* queue_pop(EventQueue* queue, int* code_error);
+void* event_processor(void* arg);
 
 #endif // SERVER_HPP

@@ -23,14 +23,14 @@ int main(void) {
         ivents_counter++;
 
         int t_interval_ms = get_random_num(1, 1000);
-        int num_of_events = get_random_num(1, 1000);
+        int num_of_events = get_random_num(1, 10);
 
         Event* events = NULL;
 
         events = (Event*)calloc(num_of_events, sizeof(Event));
 
         for(int i = 0; i < num_of_events; i++) {
-            if(i % 100 == 0 && i != 0) {
+            if(i % 5 == 0 && i != 0) {
                 int right_border    = buff_events.full_buffer ? BUFFER_SIZE - 1 : buff_events.ip - 1;
                 int random_ip_event = get_random_num(0, right_border);
 

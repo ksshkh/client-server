@@ -7,7 +7,8 @@ static const char* errors_names[] = {"NO_ERROR",
                                      "IP_ERROR",
                                      "CONNECT_ERROR",
                                      "SEND_ERROR",
-                                     "PARSE_ERROR"};
+                                     "PARSE_ERROR",
+                                     "READ_ERROR"};
 
 void ErrorsPrint(FILE* stream, int* code_error) {
     for (int i = 0; i < N_ERROR; i++) {
