@@ -27,3 +27,9 @@ $(SERVER): $(OBJECTS_SERVER)
 .PHONY: clean
 clean:
 	rm -f $(OBJECTS_CLIENT) $(OBJECTS_SERVER) $(CLIENT) $(SERVER)
+
+# make        - сборка и клиента, и сервера
+# make client - сборка клиента
+# make server - сборка сервера
+#./client     - запуск клиента
+#./server     - запуск сервера
